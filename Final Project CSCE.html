@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>School Shootings Visualization</title>
+    
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.4/css/jquery.dataTables.min.css">
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.datatables.net/1.13.4/js/jquery.dataTables.min.js"></script>
+
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 10px;
+        }
+        .chart {
+            margin-top: 30px;
+        }
+        #map {
+            height: 500px;
+            margin-top: 20px;
+        }
+        select, input[type="range"] {
+            margin: 5px;
+        }
+        .filter-panel {
+            margin-bottom: 20px;
+        }
+        .tooltip {
+            position: absolute;
+            background-color: white;
+            border: 1px solid gray;
+            padding: 5px;
+            font-size: 12px;
+            pointer-events: none;
+            opacity: 0;
+        }
+    </style>
+</head>
+<body>
+
+<h1>School Shootings in the United States</h1>
+<div id="tooltip" class="tooltip"></div>
+
+<p>
+		These visualizations provide a good look at the metrics relating to school shootings in the United States from the period 1999 to 2022. It offers insights into the frequency and geographic distribution of these tragic events. By presenting the data through the interactive maps, charts, and tables, it allows us to explore the patterns and trends of these events. This will cover the locations, frequency, human cost, and showing the casualties over the years of these events.
+	 You can interact with the map to explore more details relating to specific events and then see the coordinating data in the charts and data tables. </p>
+	 <p>Viewers are encouraged to look at the national overview on the map, where each incident is marked my a red dot, size conveying severity. After, using the year range slider, you can narrow the data to
+	 a specific time frame, which can help isolate major events. The state filters gives ou the option to see the metrics in regards to a specific state. This gives a closer look at regional trends. At the end, the option of viewing the data in a seperate data chart is avaialble for additional metrics. These visualisations offer an accessible way for the public to engage critically with an overwhelming issue, hopefully transforming that of individual events into a broader picture.
+</p>
+
+<h2>Challenges Faced</h2>
+<p>
+    This project faced a lot of challenges that required careful attention.</p>
+	1. Data Collection and Accuracy: A large challenge of this was ensuring the accuracy of the data for each incident. Some of these were missing/inaccurate or classified. This was addressed by using a public github repository to use verified data. Additionally, it was ensured that geographical coordinates were used in the map, compared to locations, to accurately display incidents.</p>
+	<p> 2. Data Size & Performance: The dataset contained a large number of records, which when used on an interactive scale, posed a lot of performance issues. This was addressed with implementing filters (with additional research help to figure out) to limit the dataset. This improved performance and made visualizations more management.</p>
+	<p> 3. Interactive Elements: Making the visualizations interactive involved a lot of usability concerns. The conclusion was made to ensure all graphs will change with one slider. This is to make sure the data reflects the same period across all visualisations for ease of use without having to change each one.
+	<p> 4. Data Classification: Unfortunately, a lot of the original datasets planned to use aren't public information. This lead to the decision, as previously stated, to use a verfied dataset with the publicly listed incidents.
+</p>
+
+<div class="filter-panel">
+    <label>Year Range:</label>
+    <input type="range" id="yearStart" min="1999" max="2022" value="1999">
+    <input type="range" id="yearEnd" min="1999" max="2022" value="2022">
+    <span id="yearLabel">1999 - 2022</span>
+
+    <br>
+
+    <label>State:</label>
+    <select id="stateSelect">
+        <option value="All">All</option>
+    </select>
+</div>
+
+<h2>Interactive Map of School Shootings</h2>
+<p><strong>Severity Map:</strong> Each dot shows a real-life incident, helping us understand how widespread school shootings are across the country. Some states have more dots, while others have fewer. This map helps us see patterns like which areas are affected the most. It's important because it gives us a clear picture of the problem and shows where efforts to prevent these events might need to focus.</p>
+<div id="map"></div>
+<div class="chart">
+    <h2>Timeline of Shootings</h2>
+    <p><strong>A Tragic Increase:</strong> The line chart tracks the number of school shootings each year, allowing viewers to discern long-term trends and identify significant fluctuations or increases in incidents. By visualizing the data in this way, it becomes evident how the frequency of school shootings has evolved, providing essential context for understanding the broader societal patterns of violence in educational settings.</p>
+    <div id="timeline"></div>
+</div>
+<div class="chart">
+    <h2>Casualties Breakdown</h2>
+    <p><strong>Injured or Killed:</strong> The bar chart displays the total number of victims (killed, injured, or total casualties) by year, revealing the trends and shifts in victim numbers over time. This visualization provides a straightforward comparison of the human cost of school shootings over the years, highlighting periods of particular concern and drawing attention to spikes in violence.</p>
+    <div id="casualties"></div>
+</div>
+<div class="chart">
+    <h2>Types of Shootings</h2>
+    <p><strong>Casualty Reasons:</strong> The pie chart categorizes school shootings into different types, such as gang-related, targeted violence, or other types, offering insight into the underlying causes and contexts of these tragic events. This visualization helps to highlight the relative frequency of each category, fostering a clearer understanding of the diverse factors contributing to the overall problem of school violence.</p>
+    <div id="types"></div>
+</div>
+<div class="chart">
+    <h2>Detailed Data Table</h2>
+    <p><strong>The Statistics:</strong> Provides sortable data for users who want in-depth information beyond visualizations. All data condensed into a new, readable chart.</p>
+    <table id="dataTable" class="display" width="100%"></table>
+</div>
+<script>
+
+// LOAD DATA FROM URL
+const url = "https://raw.githubusercontent.com/washingtonpost/data-school-shootings/master/school-shootings-data.csv";
+
+d3.csv(url).then(function(data) {
+    data.forEach(d => {
+        d.year = +d.date.split("/")[2];
+        d.lat = +d.lat;
+        d.long = +d.long;
+        d.killed = +d.killed || 0;
+        d.injured = +d.injured || 0;
+        d.casualties = +d.casualties || 0;
+    });
+
+    const tooltip = d3.select("#tooltip");
+    const states = Array.from(new Set(data.map(d => d.state))).sort();
+    states.forEach(state => {
+        d3.select("#stateSelect")
+          .append("option")
+          .attr("value", state)
+          .text(state);
+    });
+    function filterData() {
+        const startYear = +d3.select("#yearStart").property("value");
+        const endYear = +d3.select("#yearEnd").property("value");
+        const selectedState = d3.select("#stateSelect").property("value");
+
+        d3.select("#yearLabel").text(`${startYear} - ${endYear}`);
+
+        return data.filter(d => 
+            d.year >= startYear &&
+            d.year <= endYear &&
+            (selectedState === "All" || d.state === selectedState)
+        );
+    }
+// VISUALISATION SCRIPTS
+    const map = L.map('map').setView([39.5, -98.35], 4);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+    let markerLayer = L.layerGroup().addTo(map);
+
+    function updateMap(filtered) {
+        markerLayer.clearLayers();
+        filtered.forEach(d => {
+            if (!isNaN(d.lat) && !isNaN(d.long)) {
+                L.circleMarker([d.lat, d.long], {
+                    radius: Math.sqrt(d.casualties + 1) * 2,
+                    color: 'red',
+                    fillOpacity: 0.7
+                }).bindPopup(`<b>${d.school_name}</b><br>${d.city}, ${d.state}<br>Killed: ${d.killed}, Injured: ${d.injured}`)
+                .addTo(markerLayer);
+            }
+        });
+    }
+    function updateTimeline(filtered) {
+        d3.select("#timeline").html("");
+        const yearly = d3.rollup(filtered, v => v.length, d => d.year);
+        const years = Array.from(yearly, ([year, count]) => ({year, count}));
+
+        const margin = {top: 30, right: 30, bottom: 30, left: 50},
+              width = 600 - margin.left - margin.right,
+              height = 300 - margin.top - margin.bottom;
+
+        const svg = d3.select("#timeline")
+                      .append("svg")
+                      .attr("width", width + margin.left + margin.right)
+                      .attr("height", height + margin.top + margin.bottom)
+                      .append("g")
+                      .attr("transform", `translate(${margin.left},${margin.top})`);
+
+        const x = d3.scaleLinear()
+                    .domain(d3.extent(years, d => d.year))
+                    .range([0, width]);
+
+        const y = d3.scaleLinear()
+                    .domain([0, d3.max(years, d => d.count)]).nice()
+                    .range([height, 0]);
+
+        svg.append("g")
+           .attr("transform", `translate(0,${height})`)
+           .call(d3.axisBottom(x).ticks(5).tickFormat(d3.format("d")));
+
+        svg.append("g")
+           .call(d3.axisLeft(y));
+
+        const line = d3.line()
+                       .x(d => x(d.year))
+                       .y(d => y(d.count));
+
+        svg.append("path")
+           .datum(years)
+           .attr("fill", "none")
+           .attr("stroke", "steelblue")
+           .attr("stroke-width", 2)
+           .attr("d", line);
+
+        svg.selectAll("circle")
+           .data(years)
+           .enter()
+           .append("circle")
+           .attr("cx", d => x(d.year))
+           .attr("cy", d => y(d.count))
+           .attr("r", 5)
+           .attr("fill", "steelblue")
+           .on("mouseover", (event, d) => {
+                tooltip.style("opacity", 1)
+                       .html(`Year: ${d.year}<br>Shootings: ${d.count}`)
+                       .style("left", (event.pageX + 10) + "px")
+                       .style("top", (event.pageY - 28) + "px");
+           })
+           .on("mouseout", () => tooltip.style("opacity", 0));
+    }
+    function updateCasualties(filtered) {
+        d3.select("#casualties").html("");
+
+        const totals = {
+            Killed: d3.sum(filtered, d => d.killed),
+            Injured: d3.sum(filtered, d => d.injured),
+            Casualties: d3.sum(filtered, d => d.casualties)
+        };
+        const entries = Object.entries(totals);
+
+        const margin = {top: 30, right: 30, bottom: 30, left: 50},
+              width = 400 - margin.left - margin.right,
+              height = 300 - margin.top - margin.bottom;
+
+        const svg = d3.select("#casualties")
+                      .append("svg")
+                      .attr("width", width + margin.left + margin.right)
+                      .attr("height", height + margin.top + margin.bottom)
+                      .append("g")
+                      .attr("transform", `translate(${margin.left},${margin.top})`);
+
+        const x = d3.scaleBand()
+                    .domain(entries.map(d => d[0]))
+                    .range([0, width])
+                    .padding(0.2);
+
+        const y = d3.scaleLinear()
+                    .domain([0, d3.max(entries, d => d[1])]).nice()
+                    .range([height, 0]);
+
+        svg.append("g")
+           .attr("transform", `translate(0,${height})`)
+           .call(d3.axisBottom(x));
+
+        svg.append("g")
+           .call(d3.axisLeft(y));
+
+        svg.selectAll("rect")
+           .data(entries)
+           .enter()
+           .append("rect")
+           .attr("x", d => x(d[0]))
+           .attr("y", d => y(d[1]))
+           .attr("width", x.bandwidth())
+           .attr("height", d => height - y(d[1]))
+           .attr("fill", d => d[0] === "Killed" ? "red" : (d[0] === "Injured" ? "orange" : "purple"))
+           .on("mouseover", (event, d) => {
+                tooltip.style("opacity", 1)
+                       .html(`${d[0]}: ${d[1]}`)
+                       .style("left", (event.pageX + 10) + "px")
+                       .style("top", (event.pageY - 28) + "px");
+           })
+           .on("mouseout", () => tooltip.style("opacity", 0));
+    }
+    function updateTypeChart(filtered) {
+        d3.select("#types").html("");
+
+        const typeCounts = d3.rollup(filtered, v => v.length, d => d.shooting_type);
+        const entries = Array.from(typeCounts, ([type, count]) => ({type, count})).filter(d => d.type);
+
+        const width = 400, height = 300, radius = Math.min(width, height) / 2;
+
+        const svg = d3.select("#types")
+                      .append("svg")
+                      .attr("width", width)
+                      .attr("height", height)
+                      .append("g")
+                      .attr("transform", `translate(${width/2},${height/2})`);
+
+        const pie = d3.pie()
+                      .value(d => d.count);
+
+        const arc = d3.arc()
+                      .innerRadius(0)
+                      .outerRadius(radius);
+
+        const color = d3.scaleOrdinal(d3.schemeCategory10);
+
+        svg.selectAll('path')
+           .data(pie(entries))
+           .enter()
+           .append('path')
+           .attr('d', arc)
+           .attr('fill', d => color(d.data.type))
+           .on("mouseover", (event, d) => {
+                tooltip.style("opacity", 1)
+                       .html(`${d.data.type}: ${d.data.count}`)
+                       .style("left", (event.pageX + 10) + "px")
+                       .style("top", (event.pageY - 28) + "px");
+           })
+           .on("mouseout", () => tooltip.style("opacity", 0));
+    }
+    function updateTable(filtered) {
+        const columns = ["date", "school_name", "city", "state", "killed", "injured", "casualties"];
+        if ($.fn.dataTable.isDataTable('#dataTable')) {
+            $('#dataTable').DataTable().clear().destroy();
+        }
+        $('#dataTable').DataTable({
+            data: filtered.map(d => columns.map(c => d[c])),
+            columns: columns.map(c => ({title: c})),
+            pageLength: 10
+        });
+    }
+
+    function updateAll() {
+        const filtered = filterData();
+        updateMap(filtered);
+        updateTimeline(filtered);
+        updateCasualties(filtered);
+        updateTypeChart(filtered);
+        updateTable(filtered);
+    }
+    updateAll();
+    d3.selectAll("#yearStart, #yearEnd, #stateSelect").on("input", updateAll);
+});
+
+</script>
+</body>
+</html>
